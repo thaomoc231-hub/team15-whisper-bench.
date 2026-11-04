@@ -36,3 +36,19 @@
 ```bash
 sudo apt update
 sudo apt install ffmpeg# team15-whisper-bench.
+
+### 2. Installation
+# Repository clone
+git clone [https://github.com/thaomoc231-hub/team15-whisper-bench..git](https://github.com/thaomoc231-hub/team15-whisper-bench..git)
+cd team15-whisper-bench.
+
+# Python Virtual Environment 설정
+python3 -m venv venv
+source venv/bin/activate
+
+# 필수 패키지 설치
+pip install -r requirements.txt
+
+###  3. Usage
+python3 benchmark.py
+
