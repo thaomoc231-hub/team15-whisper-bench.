@@ -222,3 +222,10 @@ __marimo__/
 *.mp4
 *.mp3
 __pycache__/
+
+# Team 15: local Whisper checkpoints and generated trial results
+/models/
+*.pt
+*.pth
+/results/local/
+
