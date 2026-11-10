@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lecture-subtitle-hung"
+version = "0.2.0"
+description = "Hung's project component: FFmpeg audio extraction and CPU Whisper subtitles"
+requires-python = ">=3.10,<3.14"
+dependencies = ["openai-whisper==20250625"]
+
+[project.scripts]
+lecture-subtitles = "subtitle_bench.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
