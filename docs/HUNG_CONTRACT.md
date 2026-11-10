@@ -1,57 +1,60 @@
-# Giao diện tích hợp v1.0 — Hưng ↔ Huệ
+# Integration Contract v1.0 — Hung and Hue
 
-## Phạm vi
+## Scope
 
-Chương trình Hưng cung cấp chuẩn hóa audio và Whisper CPU; chương trình Huệ gọi tiến trình đó rồi đo,
-tính WER và lưu CSV. Bộ đo không nằm trong gói này.
+Hung's component provides audio normalization and CPU Whisper transcription. Hue's measurement program invokes the transcription process, measures its execution, calculates WER, and saves CSV results. The measurement program is outside the scope of this component.
 
-## Input
+## Inputs
 
-- prepare: video/audio có audio track đầu tiên, đường dẫn đầu ra WAV mới.
-- transcribe: WAV mono PCM signed 16-bit 16000 Hz không rỗng/không bị cắt payload;
-  checkpoint Whisper .pt tải sẵn, ngôn ngữ ISO (`ko`, `vi`, `en`), threads và beam-size dương.
-- model chuẩn ban đầu: tiny **đa ngôn ngữ**. Cấu hình mặc định: CPU, fp32, threads=4, beam_size=5,
-  temperature=0, task=transcribe, condition_on_previous_text=False. Không đổi giữa các lần so sánh.
-- Không có tải model trong worker. Mỗi lần gọi cần một thư mục output chưa tồn tại.
+- `prepare`: a video or audio file with an audio track, and a new output WAV path. The first audio track is selected.
+- `transcribe`: a nonempty, untruncated mono WAV file containing signed 16-bit PCM audio at 16000 Hz; a previously downloaded local Whisper `.pt` checkpoint; a language code such as `ko`, `vi`, or `en`; and positive `threads` and `beam-size` values.
+- Initial model baseline: **multilingual tiny**. Default settings are CPU, fp32, `threads=4`, `beam_size=5`, `temperature=0`, `task=transcribe`, and `condition_on_previous_text=False`. Keep the agreed settings fixed across comparison runs.
+- The transcription worker does not download models. Each invocation requires an output directory that does not already exist.
 
-## Process contract
+## Process Contract
 
 ```bash
 python -m subtitle_bench.cli transcribe --audio AUDIO.wav --model TINY.pt --language ko --threads 4 --beam-size 5 --output NEW_RESULT_DIR
 ```
 
-Mã 0: các file đã ghi đủ và result.json có status=complete. Mã 1: lỗi cài đặt/đầu vào/runtime được xử lý;
-mã 2: argparse báo cú pháp sai; tín hiệu hoặc lỗi runtime bất ngờ cũng có thể trả mã khác 0.
-Partner coi **mọi mã khác 0 là thất bại**, lưu stdout/stderr, không dùng làm mẫu đo thành công.
-stdout thành công là đường dẫn thư mục kết quả; thông báo lỗi đi stderr.
-Chạy mỗi phép đo bằng tiến trình Python mới. Không đo nhiều engine song song trên một máy.
+- Exit code `0`: all output files have been written, and `result.json` contains `status=complete`.
+- Exit code `1`: a handled installation, input, or runtime error.
+- Exit code `2`: an argument parsing error. Signals and unexpected runtime failures may also produce other nonzero exit codes.
 
-## Output
+The caller must treat **every nonzero exit code as a failed run**, preserve stdout and stderr, and exclude that run from successful-run statistics.
 
-| File | Nội dung |
+On success, stdout contains the output directory path. Error messages are written to stderr. Use a fresh Python process for each measurement. Do not benchmark multiple engines concurrently on the same machine.
+
+## Outputs
+
+| File | Contents |
 |---|---|
-| transcript.txt | UTF-8, ghép text segment bằng khoảng trắng, giữ chữ/dấu câu; không tự chuẩn hóa WER |
-| subtitles.srt | timestamp dạng HH:MM:SS,mmm, text theo segment Whisper |
-| segments.json | metadata và list {start, end, text} tính bằng giây |
-| result.json | schema_version=1.0, status=complete, audio_seconds, settings, outputs |
+| `transcript.txt` | UTF-8 segment text joined with spaces, preserving case and punctuation; WER normalization is not applied automatically |
+| `subtitles.srt` | Subtitles based on Whisper segments, with timestamps formatted as `HH:MM:SS,mmm` |
+| `segments.json` | Metadata and a list of `{start, end, text}` records; times are in seconds |
+| `result.json` | `schema_version=1.0`, `status=complete`, `audio_seconds`, `settings`, and `outputs` |
 
-settings có audio/model path và SHA-256, device/precision/language/threads/beam_size và phiên bản tích hợp.
-outputs có đường dẫn **tương đối** của ba file, bytes và SHA-256. Partner dùng `verify_result(output)`
-hoặc `lecture-subtitles verify OUTPUT` để kiểm tra trước khi sử dụng. Kiểm tra hash phát hiện thay đổi file,
-không thay thế việc người nghe xác nhận nội dung/timestamp.
-Manifest của audio không lời vẫn có thể complete nhưng TXT/SRT rỗng: đó là một kết quả kỹ thuật hợp lệ;
-phép acceptance trên mẫu có giọng nói yêu cầu đầu ra không rỗng.
+`settings` includes audio and model paths and their SHA-256 hashes, device, precision, language, thread count, beam size, and the integration version.
 
-## Đo quanh chỗ nào?
+`outputs` records the **relative** path, byte count, and SHA-256 hash of each of the three output files. Call `verify_result(output)` or run `lecture-subtitles verify OUTPUT` before consuming the result. Hash verification detects modified files; it does not replace listening to the audio and checking transcript accuracy or subtitle timing.
 
-Xem examples/partner_adapter.py: đo quanh subprocess chạy transcribe; verify và tính WER thực hiện sau.
-Thời gian này bao gồm khởi động Python, import, kiểm tra/đọc WAV, nạp mô hình, nhận dạng, hash và xuất file.
-Không gọi là thời gian suy luận thuần. Không bao gồm tải model, FFmpeg hoặc tính WER.
-Nếu muốn loại bước hash/IO hoặc chỉ đo inference, cần thống nhất một giao diện đo khác cho cả hai engine.
-Máy, model family, audio, ngôn ngữ, số luồng và tùy chọn giải mã phải được lưu với CSV của Huệ.
-Giống cấu hình không bảo đảm hai engine có cùng toàn bộ chi tiết giải mã hoặc kết quả giống hệt.
+For audio without speech, a complete manifest with empty TXT/SRT output can be a valid technical result. The acceptance script requires nonempty output when testing a sample that contains speech.
 
-## Việc cả nhóm còn cần chốt
+## Measurement Boundary
 
-Ai triển khai faster-whisper; cỡ model cuối; clip và bản chuẩn do cả hai kiểm tra; chuẩn hóa WER;
-số lần lặp; định nghĩa warmup; cách tính RAM. Không lấy phụ đề Whisper làm bản chuẩn.
+See `examples/partner_adapter.py`. Measure around the subprocess that runs `transcribe`; perform result verification and WER calculation afterward.
+
+This interval includes Python startup, imports, WAV validation and reading, model loading, recognition, hashing, and output writing. It is **whole-process execution time**, not inference-only time. It excludes model downloading, FFmpeg preparation, and WER calculation.
+
+If the team wants to exclude hashing or output I/O, or measure inference only, it must agree on a different measurement interface for both engines.
+
+Record the machine, model family, audio input, language, thread count, and decoding settings alongside Hue's CSV results. Matching settings does not guarantee identical decoder internals or identical transcripts across engines.
+
+## Decisions Still Required from the Team
+
+- Assign responsibility for implementing the faster-whisper runner.
+- Select the final model size and evaluation clips.
+- Prepare reference transcripts reviewed by both members.
+- Agree on WER normalization, repetition count, warmup policy, and RAM measurement method.
+
+Do not use Whisper-generated subtitles as the ground-truth reference.
